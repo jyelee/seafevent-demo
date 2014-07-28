@@ -11,6 +11,8 @@ The demo is used to log information of repo update event.
 4. AsyncClient instance start event loop.
 
 Run demo
+
 **Note:** seafevent uses libevent python binding module, you must install [it](https://github.com/haiwen/python-libevent) in your environment.
+
 1. Based on your environment modify run.sh 
 2. Execute run.sh
