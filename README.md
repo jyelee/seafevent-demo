@@ -1,10 +1,16 @@
 seafevent-demo
 ==============
 
-The demo is show how to use seafevent to listen event of seafile and seahub
+Seafile server will broadcast some messages such as repo update and put block event sended by seafile and file direcotry download file view event sended by seahub. Sometimes, maybe you want to use these messages to do some meaningfull things such as monitor, so the demo will shows how to receive these messages.
 
-此demo将seafevent监听，处理事件部分抽出，用与展示此流程如何工作。实际上，这部分主要还是依赖Ccnet AsyncClient的MQClientProcessor
+The demo is used to log information of repo update event.
 
-1. 创建AsyncClient并与Ccnet Server连接
-2. 启动EventsMQListener, 这包括创建MQClientProcessor(它用来监听我们所需要的事件，如程序中的subscribe_oper中的事件字符串)并向其注册回调函数(即当有事件到来时，如何处理。程序中是将事件放入阻塞队列中以供工作线程来处理)，创建并启动工作线程(工作线程会循环查看阻塞队列来获取消息并处理。本demo中仅仅演示了监听资料库更改事件，并将更改信息记录log操作。)
-3. AsyncClient进入事件循环
+1. Make sure Ccnet Server has been started.
+2. Create AsyncClient instance and connect with Ccnet Server.
+3. As receive message operation is handled by MqClientProc, we need to create MqClientProc instance and from the instance subscribe event source such as seaf_server.event subscribed in demo. In the demo, using EventsMQListener to encapsulate above operation and create a worker thread to mointer message queue, if there is a message the worker thread will log related information.
+4. AsyncClient instance start event loop.
+
+Run demo
+**Note:** seafevent uses libevent python binding module, you must install [it](https://github.com/haiwen/python-libevent) in your environment.
+1. Based on your environment modify run.sh 
+2. Execute run.sh

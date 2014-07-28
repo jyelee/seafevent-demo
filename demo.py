@@ -11,19 +11,17 @@ import Queue
 
 import ccnet
 from ccnet.async import AsyncClient
-from seafevents.stats.handlers import get_logger, RepoUpdateLogHanlder
-from seafevents.log import LogConfigurator
+from seaserv import get_repo_owner
+from log import LogConfigurator
+try:
+    import signal
+except ImportError:
+    import warnings
+    warnings.warn('No signals available on this platform, signal tests will be skipped')
+    signal = None
 
-'''
-此程序将seafevent监听，处理事件部分抽出，用与展示此流程如何工作。实际上，这部分主要还是依赖Ccnet AsyncClient的MQClientProcessor
-
-1. 创建AsyncClient并与Ccnet Server连接
-2. 启动EventsMQListener, 这包括创建MQClientProcessor(它用来监听我们所需要的事件，如程序中的subscribe_oper中的事件字符串)并向其注册回调函数(即当有事件到来时，如何处理。程序中是将事件放入阻塞队列中以供工作线程来处理)，创建并启动工作线程(工作线程会循环查看阻塞队列来获取消息并处理。本demo中仅仅演示了监听资料库更改事件，并将更改信息记录log操作。)
-3. AsyncClient进入事件循环
-'''
-
-
-subscribe_oper = ('seaf_server.event', 'seahub.stats')
+CCNET_CONF_DIR = 'CCNET_CONF_DIR'
+subscribe_oper = ('seaf_server.event',)
 
 class EventsMQListener(object):
 
@@ -55,8 +53,19 @@ class SeafEventsThread(threading.Thread):
         threading.Thread.__init__(self)
         self._msg_queue = msg_queue
 
+    def log_repo_update(self, msg):
+        elements = msg.body.split('\t')
+        if len(elements) != 3:
+            logging.warning("got bad message: %s", elements)
+            return
+
+        repo_id = elements[1]
+        owner = get_repo_owner(repo_id)
+
+        logging.info('repo: %s was updated by %s' % (repo_id, owner))
+
     def do_work(self, msg):
-        RepoUpdateLogHanlder(None, msg)
+        self.log_repo_update(msg)
 
     def run(self):
         while True:
@@ -65,9 +74,6 @@ class SeafEventsThread(threading.Thread):
 
 def init_param():
     argu_parser = argparse.ArgumentParser(description='seafevent demo program')
-    argu_parser.add_argument('ccnet_dir', 
-            help='ccnet config directory'
-            )
     argu_parser.add_argument('--loglevel',
             default='debug',
             help='log level'
@@ -92,17 +98,34 @@ def create_ccnet_session(ccnet_dir, evbase):
         logging.error('can not connect to ccnet server, exit')
         sys.exit() 
 
+def exit_loop(*args):
+    logging.info('AsyncClient exit event loop')
+    sys.exit(0)
+
 
 def main():
     argu_parser = init_param()
     args = argu_parser.parse_args()
-    if not os.path.exists(args.ccnet_dir):
-        logging.error('ccnet directory is not exist, exit')
-        sys.exit()
     logConfig = LogConfigurator(args.loglevel, args.logfile)
-    async_client = create_ccnet_session(args.ccnet_dir, libevent.Base())
+    ccnet_dir = None
+    if os.environ.has_key(CCNET_CONF_DIR):
+        ccnet_dir = os.environ[CCNET_CONF_DIR]
+        if not os.path.exists(ccnet_dir):
+            logging.error('ccnet directory is not exist, exit')
+            sys.exit()
+    else:
+        logging.error('CCNET_CONF_DIR env variable is not set, exit')
+        sys.exit()
+
+    ev_base = libevent.Base()
+    async_client = create_ccnet_session(ccnet_dir, ev_base)
     mq_listener = EventsMQListener()
     mq_listener.start(async_client)
+    if signal is not None:
+        term_sig = libevent.Signal(ev_base, signal.SIGTERM, exit_loop, None)
+        term_sig.add()
+        term_init = libevent.Signal(ev_base, signal.SIGINT, exit_loop, None)
+        term_init.add()
     try:
         async_client.main_loop()
     except ccnet.NetworkError:
